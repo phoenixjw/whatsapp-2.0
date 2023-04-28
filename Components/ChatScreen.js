@@ -4,13 +4,22 @@ import { useRouter } from "next/router";
 import { useAuthState } from "react-firebase-hooks/auth";
 import styled from "styled-components";
 import { useCollection } from "react-firebase-hooks/firestore";
-import { collection, orderBy, query } from "firebase/firestore";
+import { collection, orderBy, query, doc, setDoc, Timestamp , addDoc, where} from "firebase/firestore";
 import Message from "./Message";
+import { useRef, useState } from "react";
+import getRecipientEmail from "@/utils/getRecipientEmail";
+import TimeAgo from "timeago-react";
 
 function ChatScreen({ chat, messages }) {
     const [user] = useAuthState(auth);
+    const[input, setInput] = useState("");
+    const endOfMessagesRef = useRef(null);
     const router = useRouter();
     const [messagesSnapshot] = useCollection(query(collection(db, `chats/${router.query.id}/messages`), orderBy("timestamp", "asc")));
+
+    const recipientEmail = getRecipientEmail(chat.user, user)
+
+    const [recipientSnapshot] = useCollection(query(collection(db, "users"), where("email", "==", recipientEmail)))
 
     const showMessages = () => {
         if (messagesSnapshot) {
@@ -20,21 +29,74 @@ function ChatScreen({ chat, messages }) {
                     user={message.data().user}
                     message ={{
                         ...message.data(),
-                        timestamp: message.data().timestamp?.toDate().getTime()
+                        timestamp: message.data().timestamp?.toDate().getTime(),
                     }}
                 />
             ));
+        } else {
+            return JSON.parse(messages).map((message) => (
+                <Message key={message.id} user={message.user} message={message} />
+              ));
         }
     };
+
+    const scrollToBottom = () => {
+        endOfMessagesRef.current.scrollIntoView({
+            behaviour: "smooth",
+            block: "start",
+        });
+    }
+
+    const sendMessage = (e) => {
+        e.preventDefault();
+
+        const docRef = doc(db, `chats/${user.uid}`);
+
+        setDoc(docRef, {lastSeen: Timestamp.now(), }, {merge: true});
+
+        const colRef = collection(db, `chats/${router.query.id}/messages`);
+
+        addDoc(colRef, {
+            timestamp: Timestamp.now(),
+            message: input,
+            user: user.email,
+            photoURL: user.photoURL,
+          });
+
+          setInput("");
+          scrollToBottom();
+        
+    };
+
+    const recipient = recipientSnapshot?.docs?.[0]?.data()
 
     return(
         <Container>
 
             <Header>
-                <Avatar />
+                {recipient ? (
+                    <Avatar src={recipient.photoURL}/>
+
+                ) : (
+                    <Avatar>{recipientEmail[0]}</Avatar>
+                )
+                    
+
+                }
                 <HeaderInformation>
-                    <h3>Recipient email</h3>
-                    <p>Last seen...</p>
+                <h3>{recipientEmail}</h3>
+                {recipientSnapshot ? (
+                    <p>
+                        Last active:{" "}
+                        {recipient?.lastSeen?.toDate() ? (
+                        <TimeAgo datetime={recipient?.lastSeen?.toDate()} />
+                        ) : (
+                        "Unavailable"
+                        )}
+                    </p>
+                        ) : (
+                    <p>Loading last active...</p>
+                )}
                 </HeaderInformation>
                 <HeaderIcons>
                     <IconButton>
@@ -55,13 +117,19 @@ function ChatScreen({ chat, messages }) {
 
             <MessageContainer>
                 {showMessages()}
-                <EndOfMessage />
+                <EndOfMessage ref={endOfMessagesRef}/>
             </MessageContainer>
 
 
             <InputContainer>
             {/* Emote Button */}
-            <Input/>
+            <SvgIcon xmlns="http://www.w3.org/2000/svg" fill="white" viewBox="0 0 24 24" strokeWidth={1.5}  className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z" />
+            </SvgIcon>
+
+            <Input value={input} onChange={e => setInput(e.target.value)}/>
+            <button hidden disabled={!input} type="submit" onClick={sendMessage}></button>
+
             </InputContainer>
         </Container>
     )
@@ -71,7 +139,7 @@ export default ChatScreen;
 const Container = styled.div`
 `;
 
-const Input = styled.div`
+const Input = styled.input`
     flex: 1;
     outline: 0;
     border: none;
@@ -89,6 +157,7 @@ const InputContainer = styled.form`
     align-items: center;
     padding: 10px;
     position: sticky;
+    /* postion sticky- avoids padding issues */
     bottom: 0;
     background-color: white;
     z-index: 100;
@@ -126,6 +195,12 @@ const HeaderInformation = styled.div`
 
 const HeaderIcons = styled.div``;
 
-const MessageContainer = styled.div``;
+const MessageContainer = styled.div`
+    padding: 30px;
+    background-color: #e5ded8;
+    min-height: 90vh;
+`;
 
-const EndOfMessage = styled.div``
+const EndOfMessage = styled.div`
+    margin-bottom: 50px;
+`;
