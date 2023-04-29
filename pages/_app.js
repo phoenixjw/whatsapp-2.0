@@ -7,7 +7,8 @@ import { useEffect } from 'react';
 import { collection, setDoc, serverTimestamp, doc } from 'firebase/firestore';
 
 export default function App({ Component, pageProps }) {
-  const [user, loading] = useAuthState(auth);
+  // const [user, loading] = useAuthState(auth);
+  const [user] = useAuthState(auth);
 
   useEffect(()=> {
     if (user) {
@@ -21,7 +22,7 @@ export default function App({ Component, pageProps }) {
 
   }, [user])
 
-  if (loading) return <Loading/>;
+  // if (loading) return <Loading/>;
 
   if (!user) return <Login />
 
